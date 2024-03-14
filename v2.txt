@@ -1,0 +1,91 @@
+import cv2
+import os
+import numpy as np
+
+# Inicializar la cámara
+cap = cv2.VideoCapture(0)
+
+# Carpeta que contiene las fotos de las personas conocidas
+known_people_folder = 'C:/Users/marti/OneDrive/Desktop/DAW/basesdedatos/proyecto'
+
+# Inicializar el detector de rostros de OpenCV
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+# Inicializar el reconocedor facial LBPH (Local Binary Patterns Histograms)
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+
+# Diccionario para mapear IDs de rostros con nombres
+labels_map = {}
+
+# Cargar las imágenes y nombres de las personas conocidas desde la carpeta
+known_people = []
+face_labels = []
+
+for label, person_image in enumerate(os.listdir(known_people_folder)):
+    person_name, _ = os.path.splitext(person_image)
+    person_path = os.path.join(known_people_folder, person_image)
+    
+    # Leer la imagen y convertirla a escala de grises
+    image = cv2.imread(person_path)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # Detectar rostros en la imagen
+    faces = face_cascade.detectMultiScale(gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    
+    for (x, y, w, h) in faces:
+        # Obtener la región de interés (ROI) que contiene el rostro
+        face_roi = gray_image[y:y+h, x:x+w]
+        
+        # Agregar el rostro y la etiqueta al conjunto de entrenamiento
+        known_people.append(face_roi)
+        face_labels.append(label)
+
+        # Mapear el ID del rostro con el nombre de la persona
+        labels_map[label] = person_name
+
+# Entrenar el reconocedor facial
+recognizer.train(known_people, np.array(face_labels))
+
+while True:
+    # Capturar el fotograma de la cámara
+    ret, frame = cap.read()
+
+    # Convertir el fotograma a escala de grises
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Detectar rostros en el fotograma
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in faces:
+        # Obtener la región de interés (ROI) que contiene el rostro
+        face_roi = gray[y:y+h, x:x+w]
+
+        # Realizar la predicción utilizando el reconocedor facial
+        label, confidence = recognizer.predict(face_roi)
+
+        # Establecer un umbral de confianza (ajusta este valor según tus necesidades)
+        confidence_threshold = 70
+
+        if confidence < confidence_threshold:
+            # La persona es conocida
+            name = labels_map[label]
+        else:
+            # La persona es desconocida
+            name = "Desconocido"
+
+        # Mostrar el nombre de la persona y la confianza
+        cv2.putText(frame, f'{name} ({confidence:.2f})', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # Dibujar el rectángulo alrededor del rostro
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    # Mostrar el resultado
+    cv2.imshow('Face Recognition', frame)
+
+    # Romper el bucle si se presiona la tecla 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Liberar la cámara y cerrar todas las ventanas
+cap.release()
+cv2.destroyAllWindows()
